@@ -1,0 +1,47 @@
+# Superset + Postgres с данными «Корзинки».
+# Запуск:  docker compose up -d --build
+# Superset: http://localhost:8088  (логин/пароль: admin / admin)
+
+services:
+  analytics-db:
+    image: postgres:16
+    container_name: korzinka_db
+    environment:
+      POSTGRES_USER: analyst
+      POSTGRES_PASSWORD: analyst
+      POSTGRES_DB: korzinka
+    ports:
+      - "5433:5432"          # 5433, чтобы не конфликтовать с локальным Postgres
+    volumes:
+      - ./sql/01_schema_and_load.sql:/docker-entrypoint-initdb.d/01_schema_and_load.sql:ro
+      - ./data:/data:ro
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U analyst -d korzinka"]
+      interval: 5s
+      retries: 20
+
+  superset:
+    build: ./superset
+    container_name: korzinka_superset
+    environment:
+      SUPERSET_SECRET_KEY: "change-me-to-any-long-random-string"
+    ports:
+      - "8088:8088"
+    volumes:
+      - superset_home:/app/superset_home
+      - ./superset/superset_config.py:/app/pythonpath/superset_config.py:ro
+      - ./dashboards:/app/dashboards
+    depends_on:
+      analytics-db:
+        condition: service_healthy
+    command: >
+      bash -c "superset db upgrade &&
+               superset fab create-admin --username admin --firstname Admin
+                 --lastname Admin --email admin@example.com --password admin || true &&
+               superset init &&
+               superset run -h 0.0.0.0 -p 8088 --with-threads"
+
+volumes:
+  pgdata:
+  superset_home:
